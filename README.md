@@ -1,8 +1,5 @@
 # WIP
 
-Here's a sample README file for your `SignalQuery` API client, complete with usage instructions and an example use case:
-
-```markdown
 # SignalQuery API Client
 
 `SignalQuery` is a lightweight and reactive API client for making HTTP requests in TypeScript. It leverages the `Signal` class to provide a reactive programming model, allowing easy state management and reactivity in your applications.
@@ -142,7 +139,7 @@ deleteUser('userId123');
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-```
+
 
 ### Explanation
 - **Overview**: Provides a brief description of what `SignalQuery` does.
