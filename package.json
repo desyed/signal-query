@@ -1,6 +1,6 @@
 {
   "name": "signal-query",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A lightweight and efficient query library for managing asynchronous data fetching and state management in JavaScript applications",
   "author": "Syed Shihab <syedshihabdu@gmail.com>",
   "license": "MIT",
