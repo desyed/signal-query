@@ -31,10 +31,16 @@ class Signal<T> {
   static currentListener: (() => void) | null = null;
 }
 
-function createEffect(callback: () => void) {
-  Signal.currentListener = callback;
-  callback();
-  Signal.currentListener = null;
+export function createEffect(callback: () => void) {
+  const effect = () => {
+    Signal.currentListener = effect;
+    try {
+      callback();
+    } finally {
+      Signal.currentListener = null;
+    }
+  };
+  effect();
 }
 
 type RequestConfig = {
@@ -44,31 +50,31 @@ type RequestConfig = {
   params?: Record<string, any>;
   data?: any;
   timeout?: number;
-  responseType?: "json" | "text" | "stream"; // Adding response type
-  tags?: string[]; // Add tags to associate with requests
+  responseType?: "json" | "text" | "stream";
+  tags?: string[];
 };
 
 type RequestResult<T> = {
-  isLoading: boolean;
-  data: T | null; // Data can be of generic type
-  error: Error | null;
-  isSuccess: boolean;
-  isError: boolean;
+  isLoading: Signal<boolean>;
+  data: Signal<T | null>;
+  error: Signal<Error | null>;
+  isSuccess: Signal<boolean>;
+  isError: Signal<boolean>;
 };
 
 export class SignalQuery {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
   private timeout: number;
-  private cache: Map<string, Signal<any>>;
-  private tags: Map<string, Set<string>>; // Mapping from tag to URLs
+  private cache: Map<string, RequestResult<any>>;
+  private tags: Map<string, Set<string>>;
 
   private constructor(config: { baseUrl: string; headers?: Record<string, string>; timeout?: number }) {
     this.baseUrl = config.baseUrl;
     this.defaultHeaders = config.headers || {};
-    this.timeout = config.timeout || 5000; // Default timeout of 5 seconds
+    this.timeout = config.timeout || 5000;
     this.cache = new Map();
-    this.tags = new Map(); // Initialize tags map
+    this.tags = new Map();
   }
 
   static create(config: { baseUrl: string; headers?: Record<string, string>; timeout?: number }) {
@@ -77,62 +83,45 @@ export class SignalQuery {
 
   private buildUrlWithParams(url: string, params?: Record<string, any>): string {
     if (!params) return url;
-
     const queryString = Object.entries(params)
       .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
       .join("&");
-
     return `${url}?${queryString}`;
   }
 
-  private async fetchData<T>(config: RequestConfig): Promise<T> {
-    const { method = "GET", url, headers = {}, params, data, timeout, responseType } = config;
+  private fetchData(config: RequestConfig): XMLHttpRequest {
+    const { method = "GET", url, headers = {}, params, timeout, responseType } = config;
     const finalUrl = this.buildUrlWithParams(`${this.baseUrl}${url}`, params);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout || this.timeout);
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, finalUrl, true);
 
-    const response = await fetch(finalUrl, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...this.defaultHeaders,
-        ...headers,
-      },
-      body: method === "GET" ? undefined : JSON.stringify(data),
-      signal: controller.signal,
+    Object.entries({ ...this.defaultHeaders, ...headers }).forEach(([key, value]) => {
+      xhr.setRequestHeader(key, value);
     });
 
-    clearTimeout(timer);
+    xhr.timeout = timeout || this.timeout;
 
-    if (!response.ok) {
-      throw new Error(`Error: ${response.statusText}`);
+    if (responseType) {
+      xhr.responseType = responseType === 'stream' ? 'arraybuffer' : responseType;
     }
 
-    // Handle different response types
-    if (responseType === "stream") {
-      return response.body as unknown as T; // Returning stream as generic type
-    }
-
-    return response.json() as Promise<T>;
+    return xhr;
   }
 
-  async get<T>(url: string, params?: Record<string, any>, headers?: Record<string, string>, responseType?: "json" | "text" | "stream", tags?: string[]): Promise<RequestResult<T>> {
+  get<T>(url: string, params?: Record<string, any>, headers?: Record<string, string>, responseType?: "json" | "text" | "stream", tags?: string[]): RequestResult<T> {
     const cacheKey = `${url}?${new URLSearchParams(params).toString()}`;
-    const result: RequestResult<T> = {
-      isLoading: true,
-      data: null,
-      error: null,
-      isSuccess: false,
-      isError: false,
-    };
-
-    // Check if we have cached data
+    
     if (!this.cache.has(cacheKey)) {
-      const signal = new Signal<T>(null);
-      this.cache.set(cacheKey, signal);
+      const result: RequestResult<T> = {
+        isLoading: new Signal<boolean>(true),
+        data: new Signal<T | null>(null),
+        error: new Signal<Error | null>(null),
+        isSuccess: new Signal<boolean>(false),
+        isError: new Signal<boolean>(false),
+      };
+      this.cache.set(cacheKey, result);
 
-      // Associate tags with the cache key
       if (tags) {
         tags.forEach(tag => {
           if (!this.tags.has(tag)) {
@@ -142,90 +131,137 @@ export class SignalQuery {
         });
       }
 
-      // Fetch the data initially
-      try {
-        const data = await this.fetchData<T>({ method: "GET", url, params, headers, responseType });
-        signal.value = data; // Update the signal value with fetched data
-        result.isLoading = false;
-        result.isSuccess = true;
-        result.data = signal.value; // Assign the data directly
-      } catch (error) {
-        result.isLoading = false;
-        result.isError = true;
-        result.error = error;
-      }
-    } else {
-      // If cached, set the signal from cache
-      result.data = this.cache.get(cacheKey)!.value;
-      result.isLoading = false;
-      result.isSuccess = true;
+      const xhr = this.fetchData({ method: "GET", url, params, headers, responseType });
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          result.isLoading.value = false;
+          result.isSuccess.value = true;
+          result.data.value = xhr.response;
+        } else {
+          result.isLoading.value = false;
+          result.isError.value = true;
+          result.error.value = new Error(`HTTP error! status: ${xhr.status}`);
+        }
+      };
+
+      xhr.onerror = () => {
+        result.isLoading.value = false;
+        result.isError.value = true;
+        result.error.value = new Error('Network error occurred');
+      };
+
+      xhr.ontimeout = () => {
+        result.isLoading.value = false;
+        result.isError.value = true;
+        result.error.value = new Error('Request timed out');
+      };
+
+      xhr.send();
     }
 
-    return result; // Return the request result
+    return this.cache.get(cacheKey)!;
   }
 
-  async post<T>(url: string, data?: any, headers?: Record<string, string>, tags?: string[]): Promise<RequestResult<T>> {
+  post<T>(url: string, data?: any, headers?: Record<string, string>, tags?: string[]): RequestResult<T> {
     return this.request<T>({ method: "POST", url, data, headers, tags });
   }
 
-  async put<T>(url: string, data?: any, headers?: Record<string, string>, tags?: string[]): Promise<RequestResult<T>> {
+  put<T>(url: string, data?: any, headers?: Record<string, string>, tags?: string[]): RequestResult<T> {
     return this.request<T>({ method: "PUT", url, data, headers, tags });
   }
 
-  async delete<T>(url: string, params?: Record<string, any>, headers?: Record<string, string>, tags?: string[]): Promise<RequestResult<T>> {
+  delete<T>(url: string, params?: Record<string, any>, headers?: Record<string, string>, tags?: string[]): RequestResult<T> {
     return this.request<T>({ method: "DELETE", url, params, headers, tags });
   }
 
-  private async request<T>(config: RequestConfig): Promise<RequestResult<T>> {
+  private request<T>(config: RequestConfig): RequestResult<T> {
     const result: RequestResult<T> = {
-      isLoading: true,
-      data: null,
-      error: null,
-      isSuccess: false,
-      isError: false,
+      isLoading: new Signal<boolean>(true),
+      data: new Signal<T | null>(null),
+      error: new Signal<Error | null>(null),
+      isSuccess: new Signal<boolean>(false),
+      isError: new Signal<boolean>(false),
     };
 
-    try {
-      const response = await this.fetchData<T>(config);
-      result.isLoading = false;
-      result.isSuccess = true;
-      result.data = response;
+    const xhr = this.fetchData(config);
 
-      // Revalidate cache entries for tags associated with this request
-      if (config.tags) {
-        config.tags.forEach(tag => {
-          const cacheKeys = this.tags.get(tag);
-          if (cacheKeys) {
-            cacheKeys.forEach(key => {
-              const cachedSignal = this.cache.get(key);
-              if (cachedSignal) {
-                // Re-fetch the data and update the signal
-                this.fetchData({ method: "GET", url: key.split('?')[0], params: this.getParams(key) })
-                  .then(data => {
-                    cachedSignal.value = data;
-                  });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        result.isLoading.value = false;
+        result.isSuccess.value = true;
+        result.data.value = xhr.response;
+
+        if (config.tags) {
+          this.revalidateTags(config.tags);
+        }
+      } else {
+        result.isLoading.value = false;
+        result.isError.value = true;
+        result.error.value = new Error(`HTTP error! status: ${xhr.status}`);
+      }
+    };
+
+    xhr.onerror = () => {
+      result.isLoading.value = false;
+      result.isError.value = true;
+      result.error.value = new Error('Network error occurred');
+    };
+
+    xhr.ontimeout = () => {
+      result.isLoading.value = false;
+      result.isError.value = true;
+      result.error.value = new Error('Request timed out');
+    };
+
+    xhr.send(config.data ? JSON.stringify(config.data) : undefined);
+
+    return result;
+  }
+
+  private revalidateTags(tags: string[]) {
+    tags.forEach(tag => {
+      const cacheKeys = this.tags.get(tag);
+      if (cacheKeys) {
+        cacheKeys.forEach(key => {
+          const cachedResult = this.cache.get(key);
+          if (cachedResult) {
+            const [url, paramsString] = key.split('?');
+            const params = this.getParams(paramsString);
+            const xhr = this.fetchData({ method: "GET", url, params });
+
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                cachedResult.data.value = xhr.response;
+                cachedResult.isSuccess.value = true;
+                cachedResult.isError.value = false;
+                cachedResult.error.value = null;
+              } else {
+                cachedResult.isError.value = true;
+                cachedResult.error.value = new Error(`HTTP error! status: ${xhr.status}`);
               }
-            });
+            };
+
+            xhr.onerror = () => {
+              cachedResult.isError.value = true;
+              cachedResult.error.value = new Error('Network error occurred');
+            };
+
+            xhr.send();
           }
         });
       }
-
-      return result;
-    } catch (error) {
-      result.isLoading = false;
-      result.isError = true;
-      result.error = error;
-      return result;
-    }
+    });
   }
 
-  private getParams(key: string): Record<string, any> {
-    const queryString = key.split('?')[1] || '';
+  private getParams(queryString: string): Record<string, any> {
     const params: Record<string, any> = {};
-    queryString.split('&').forEach(param => {
-      const [k, v] = param.split('=');
-      params[decodeURIComponent(k)] = decodeURIComponent(v);
-    });
+    if (queryString) {
+      queryString.split('&').forEach(param => {
+        const [k, v] = param.split('=');
+        params[decodeURIComponent(k)] = decodeURIComponent(v);
+      });
+    }
     return params;
   }
 }

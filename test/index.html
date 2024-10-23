@@ -3,9 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>SignalQuery Test</title>
+    <script src="../dist/index.js"></script>
+    <style>
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .loading { color: blue; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
 </head>
 <body>
-    
+    <h1>SignalQuery Test</h1>
+    <button id="fetchButton">Fetch Data</button>
+    <div id="result"></div>
+
+    <script>
+        // Initialize SignalQuery
+        const apiClient = SignalQuery.create({
+            baseUrl: 'https://jsonplaceholder.typicode.com',
+            timeout: 5000
+        });
+
+        // Test GET request
+        async function testGet() {
+            const result = await apiClient.get('/posts/1');
+            const resultDiv = document.getElementById('result');
+            
+            function updateUI() {
+                if (result.isLoading.value) {
+                    resultDiv.innerHTML = '<p class="loading">Loading...</p>';
+                } else if (result.isError.value) {
+                    resultDiv.innerHTML = `<p class="error">Error: ${result.error.value}</p>`;
+                } else if (result.isSuccess.value) {
+                    resultDiv.innerHTML = `<p class="success">Success:</p><pre>${JSON.stringify(result.data.value, null, 2)}</pre>`;
+                }
+            }
+
+            // Initial update
+            updateUI();
+
+            // Create effect to automatically update UI when signals change
+            SignalQuery.createEffect(updateUI);
+        }
+
+        // Add click event listener to the button
+        document.getElementById('fetchButton').addEventListener('click', testGet);
+    </script>
 </body>
 </html>

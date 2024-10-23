@@ -1,156 +1,68 @@
-# WIP
+# SignalQuery
 
-Here's a sample README file for your `SignalQuery` API client, complete with usage instructions and an example use case:
-
-```markdown
-# SignalQuery API Client
-
-`SignalQuery` is a lightweight and reactive API client for making HTTP requests in TypeScript. It leverages the `Signal` class to provide a reactive programming model, allowing easy state management and reactivity in your applications.
+SignalQuery is a lightweight and efficient query library for managing asynchronous data fetching and state management in JavaScript applications. It provides a simple yet powerful API for making HTTP requests and managing the resulting data using a reactive programming model.
 
 ## Features
 
-- **Reactive Data Management**: Automatically updates data in your application when API responses change.
-- **Caching**: Supports caching of GET requests to reduce network overhead.
-- **Tag-Based Revalidation**: Allows you to revalidate related data based on tags.
-- **TypeScript Support**: Built with TypeScript for type safety and developer experience.
+- **Reactive State Management**: Utilizes a custom `Signal` class for reactive state updates.
+- **Efficient HTTP Requests**: Supports GET, POST, PUT, and DELETE methods.
+- **Caching**: Implements caching for GET requests to reduce network overhead.
+- **Tag-Based Invalidation**: Allows for intelligent cache invalidation using tags.
+- **TypeScript Support**: Built with TypeScript for enhanced type safety and developer experience.
+- **Configurable**: Easily customizable with options for base URL, headers, and timeout.
 
 ## Installation
 
-```npm install signal-query```
+You can install SignalQuery using npm:
+
+```bash
+npm install signal-query
+```
 
 ## Usage
 
-### Initialization
+### Basic Setup
 
-To use the `SignalQuery` client, you first need to create an instance by providing the base URL of your API.
+First, create an instance of SignalQuery:
 
 ```typescript
-import { SignalQuery } from 'signal-query'; // Adjust the import based on your file structure
+import { SignalQuery } from 'signal-query';
 
-const apiClient = SignalQuery.create({
-  baseUrl: 'https://api.example.com',
-  headers: {
-    'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
-  },
+const query = new SignalQuery();
+```
+
+### Making a GET Request
+
+To make a GET request, use the `query.get` method:
+
+```typescript
+const result = query.get({ url: '/api/data', params: { id: 1 } });
+
+// Access the result properties
+console.log('Loading:', result.isLoading.value);
+console.log('Data:', result.data.value);
+console.log('Error:', result.error.value);
+console.log('Success:', result.isSuccess.value);
+console.log('Error occurred:', result.isError.value);
+
+// You can also create an effect to react to changes
+createEffect(() => {
+  if (result.isLoading.value) {
+    console.log('Loading data...');
+  } else if (result.isError.value) {
+    console.log('Error:', result.error.value);
+  } else if (result.isSuccess.value) {
+    console.log('Data loaded:', result.data.value);
+  }
 });
+
 ```
 
-### Making Requests
+### Making a POST Request
 
-You can make various types of requests using the `get`, `post`, `put`, and `delete` methods.
-
-#### Example Use Case
-
-Let's consider a scenario where you want to fetch a list of users from an API and update the user data.
-
-1. **Fetching Users**
+To make a POST request, use the `query.post` method:
 
 ```typescript
-async function fetchUsers() {
-  const result = await apiClient.get<User[]>('/users');
-
-  if (result.isLoading) {
-    console.log('Loading...');
-  } else if (result.isError) {
-    console.error('Error fetching users:', result.error);
-  } else {
-    console.log('Users fetched successfully:', result.data);
-  }
-}
-
-fetchUsers();
+const result = query.post({ url: '/api/data', data: { name: 'John', age: 30 } });
 ```
-
-2. **Creating a New User**
-
-```typescript
-async function createUser(newUser: User) {
-  const result = await apiClient.post<User>('/users', newUser, {
-    tags: ['users'], // Tag to revalidate related data
-  });
-
-  if (result.isLoading) {
-    console.log('Creating user...');
-  } else if (result.isError) {
-    console.error('Error creating user:', result.error);
-  } else {
-    console.log('User created successfully:', result.data);
-    // Optionally, fetch users again to see the updated list
-    fetchUsers();
-  }
-}
-
-const newUser: User = {
-  name: 'John Doe',
-  email: 'johndoe@example.com',
-};
-
-createUser(newUser);
-```
-
-3. **Updating an Existing User**
-
-```typescript
-async function updateUser(userId: string, updatedData: Partial<User>) {
-  const result = await apiClient.put<User>(`/users/${userId}`, updatedData, {
-    tags: ['users'], // Tag to revalidate related data
-  });
-
-  if (result.isLoading) {
-    console.log('Updating user...');
-  } else if (result.isError) {
-    console.error('Error updating user:', result.error);
-  } else {
-    console.log('User updated successfully:', result.data);
-    // Optionally, fetch users again to see the updated list
-    fetchUsers();
-  }
-}
-
-const updatedData = { email: 'john.new@example.com' };
-updateUser('userId123', updatedData);
-```
-
-4. **Deleting a User**
-
-```typescript
-async function deleteUser(userId: string) {
-  const result = await apiClient.delete(`/users/${userId}`, {
-    tags: ['users'], // Tag to revalidate related data
-  });
-
-  if (result.isLoading) {
-    console.log('Deleting user...');
-  } else if (result.isError) {
-    console.error('Error deleting user:', result.error);
-  } else {
-    console.log('User deleted successfully');
-    // Optionally, fetch users again to see the updated list
-    fetchUsers();
-  }
-}
-
-deleteUser('userId123');
-```
-
-### Notes
-
-- Ensure your API endpoints are configured to accept the respective HTTP methods and data formats.
-- Customize headers and parameters as needed based on your API's requirements.
-
-### License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
-
-```
-
-### Explanation
-- **Overview**: Provides a brief description of what `SignalQuery` does.
-- **Installation**: Instructions on how to add `SignalQuery` to your project.
-- **Usage**: Details how to initialize the client and make API requests.
-- **Example Use Case**: Demonstrates how to use the client to fetch, create, update, and delete users, which provides practical context for potential users.
-- **Notes**: Encourages customization based on specific API needs.
-- **License**: Basic licensing information.
-
-Feel free to modify the content, especially the example user-related data structure and API endpoint URLs, to fit your specific use case!
 
